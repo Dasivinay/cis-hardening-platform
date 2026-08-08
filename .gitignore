@@ -16,3 +16,5 @@ __pycache__/
 node_modules/
 dist/
 .venv/
+build.log
+scan-build.log
