@@ -1,0 +1,158 @@
+version: "3.9"
+
+networks:
+  secharden-net:
+    name: secharden-net
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: cis-platform-db
+    restart: unless-stopped
+    networks:
+      - secharden-net
+    environment:
+      POSTGRES_USER: cis_user
+      POSTGRES_PASSWORD: cis_password
+      POSTGRES_DB: cis_platform
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cis_user -d cis_platform"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: cis-platform-redis
+    restart: unless-stopped
+    networks:
+      - secharden-net
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: cis-platform-backend
+    restart: unless-stopped
+    networks:
+      - secharden-net
+    environment:
+      FLASK_ENV: production
+      DATABASE_URL: postgresql+psycopg2://cis_user:cis_password@db:5432/cis_platform
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-me}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-change-me}
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@secharden.local}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-ChangeMe123!}
+      DOCKER_TARGET_IMAGE: cis-platform/ubuntu-scan-target:latest
+      DOCKER_NETWORK: secharden-net
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "5000:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: gunicorn --bind 0.0.0.0:5000 --workers 4 --timeout 120 wsgi:app
+
+  celery-worker:
+    build:
+      context: ./backend
+    container_name: cis-platform-celery-worker
+    restart: unless-stopped
+    networks:
+      - secharden-net
+    environment:
+      FLASK_ENV: production
+      DATABASE_URL: postgresql+psycopg2://cis_user:cis_password@db:5432/cis_platform
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-me}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-change-me}
+      DOCKER_TARGET_IMAGE: cis-platform/ubuntu-scan-target:latest
+      DOCKER_NETWORK: secharden-net
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    entrypoint: []
+    command: sh -c "sleep 5 && celery -A celery_worker.celery_app worker --loglevel=info"
+
+  celery-beat:
+    build:
+      context: ./backend
+    container_name: cis-platform-celery-beat
+    restart: unless-stopped
+    networks:
+      - secharden-net
+    environment:
+      FLASK_ENV: production
+      DATABASE_URL: postgresql+psycopg2://cis_user:cis_password@db:5432/cis_platform
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-me}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-change-me}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    entrypoint: []
+    command: sh -c "sleep 8 && celery -A celery_worker.celery_app beat --loglevel=info"
+
+  scan-target-image-builder:
+    build:
+      context: ./targets/ubuntu-scan-target
+    image: cis-platform/ubuntu-scan-target:latest
+    container_name: cis-platform-target-image-builder
+    # This service exists purely so `docker compose up --build` builds the
+    # scan-target image as a side effect (it isn't referenced by anything
+    # else — docker_service.py runs containers *from* this image by name,
+    # it never builds it). It runs `true` and exits immediately; that's
+    # expected, not a failure. It previously sat behind `profiles:
+    # [build-only]`, which Compose skips unless explicitly requested — so a
+    # plain `docker compose up --build -d` never built this image and every
+    # subsequent "create target" call failed with image-not-found.
+    command: ["true"]
+    restart: "no"
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: cis-platform-frontend
+    restart: unless-stopped
+    networks:
+      - secharden-net
+    environment:
+      VITE_API_BASE_URL: http://localhost:5000/api/v1
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
