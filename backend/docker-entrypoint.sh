@@ -15,7 +15,6 @@ if not database_url:
     print("[entrypoint] ERROR: DATABASE_URL is not set")
     raise SystemExit(1)
 
-# Support both postgresql:// and postgresql+psycopg2://
 database_url = database_url.replace(
     "postgresql+psycopg2://",
     "postgresql://",
@@ -43,9 +42,14 @@ for attempt in range(60):
             print(f"[entrypoint] ERROR: PostgreSQL connection failed: {e}")
             raise SystemExit(1)
 
+        print(
+            f"[entrypoint] postgres not ready, retrying... "
+            f"({attempt + 1}/60)"
+        )
         time.sleep(2)
 else:
     raise SystemExit(1)
+
 PY
 
 echo "[entrypoint] running migrations..."
