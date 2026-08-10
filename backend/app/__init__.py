@@ -8,12 +8,16 @@ from app.utils.errors import register_error_handlers
 
 def create_app(config_name: str = None) -> Flask:
     config_name = config_name or os.environ.get("FLASK_ENV", "production")
+
     app = Flask(__name__)
     app.config.from_object(config_by_name[config_name])
 
     db.init_app(app)
     jwt.init_app(app)
-    cors.init_app(app, resources={r"/api/*": {"origins": app.config["CORS_ORIGINS"]}})
+    cors.init_app(
+        app,
+        resources={r"/api/*": {"origins": app.config["CORS_ORIGINS"]}}
+    )
     migrate.init_app(app, db)
     limiter.init_app(app)
     make_celery(app)
@@ -24,47 +28,17 @@ def create_app(config_name: str = None) -> Flask:
     register_error_handlers(app)
 
     @app.get("/")
-def home():
-    return {
-        "status": "ok",
-        "service": "CIS Hardening Platform",
-        "message": "Backend API is running",
-        "api_base": "/api/v1",
-        "health": "/health"
-    }
+    def home():
+        return {
+            "status": "ok",
+            "service": "CIS Hardening Platform",
+            "message": "Backend API is running",
+            "api_base": "/api/v1",
+            "health": "/health"
+        }
 
-@app.get("/")
-def home():
-    return {
-        "status": "ok",
-        "service": "CIS Hardening Platform",
-        "message": "Backend API is running",
-        "api_base": "/api/v1",
-        "health": "/health"
-    }
+    @app.get("/health")
+    def health():
+        return {"status": "ok"}
 
-@app.get("/")
-def home():
-    return {
-        "status": "ok",
-        "service": "CIS Hardening Platform",
-        "message": "Backend API is running",
-        "api_base": "/api/v1",
-        "health": "/health"
-    }
-
-@app.get("/")
-def home():
-    return {
-        "status": "ok",
-        "service": "CIS Hardening Platform",
-        "message": "Backend API is running",
-        "api_base": "/api/v1",
-        "health": "/health"
-    }
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-return app
+    return app
