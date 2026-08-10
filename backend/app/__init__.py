@@ -23,8 +23,48 @@ def create_app(config_name: str = None) -> Flask:
 
     register_error_handlers(app)
 
-    @app.get("/health")
-    def health():
-        return {"status": "ok"}
+    @app.get("/")
+def home():
+    return {
+        "status": "ok",
+        "service": "CIS Hardening Platform",
+        "message": "Backend API is running",
+        "api_base": "/api/v1",
+        "health": "/health"
+    }
 
-    return app
+@app.get("/")
+def home():
+    return {
+        "status": "ok",
+        "service": "CIS Hardening Platform",
+        "message": "Backend API is running",
+        "api_base": "/api/v1",
+        "health": "/health"
+    }
+
+@app.get("/")
+def home():
+    return {
+        "status": "ok",
+        "service": "CIS Hardening Platform",
+        "message": "Backend API is running",
+        "api_base": "/api/v1",
+        "health": "/health"
+    }
+
+@app.get("/")
+def home():
+    return {
+        "status": "ok",
+        "service": "CIS Hardening Platform",
+        "message": "Backend API is running",
+        "api_base": "/api/v1",
+        "health": "/health"
+    }
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+return app
