@@ -42,3 +42,4 @@ def create_app(config_name: str = None) -> Flask:
         return {"status": "ok"}
 
     return app
+
