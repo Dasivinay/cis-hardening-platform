@@ -2,26 +2,70 @@
 set -e
 
 echo "[entrypoint] waiting for postgres..."
-until python -c "
-import socket, os, sys
-host = os.environ.get('POSTGRES_HOST', 'db')
-port = int(os.environ.get('POSTGRES_PORT', 5432))
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.settimeout(1)
-try:
-    s.connect((host, port))
-    s.close()
-except Exception:
-    sys.exit(1)
-"; do
-  sleep 1
-done
+
+python - <<'PY'
+import os
+import socket
+import time
+from urllib.parse import urlparse
+
+database_url = os.environ.get("DATABASE_URL")
+
+if not database_url:
+    print("[entrypoint] ERROR: DATABASE_URL is not set")
+    raise SystemExit(1)
+
+# Support both postgresql:// and postgresql+psycopg2://
+database_url = database_url.replace(
+    "postgresql+psycopg2://",
+    "postgresql://",
+    1
+)
+
+parsed = urlparse(database_url)
+
+host = parsed.hostname
+port = parsed.port or 5432
+
+if not host:
+    print("[entrypoint] ERROR: Could not determine PostgreSQL host")
+    raise SystemExit(1)
+
+print(f"[entrypoint] checking postgres at {host}:{port}")
+
+for attempt in range(60):
+    try:
+        with socket.create_connection((host, port), timeout=3):
+            print("[entrypoint] postgres is reachable")
+            break
+    except Exception as e:
+        if attempt == 59:
+            print(f"[entrypoint] ERROR: PostgreSQL connection failed: {e}")
+            raise SystemExit(1)
+
+        time.sleep(2)
+else:
+    raise SystemExit(1)
+PY
 
 echo "[entrypoint] running migrations..."
-flask db upgrade || flask db init && flask db migrate -m "init" && flask db upgrade
+
+flask db upgrade
+
+echo "[entrypoint] migrations completed"
 
 echo "[entrypoint] seeding initial data..."
+
 python seed.py || true
 
-echo "[entrypoint] starting: $@"
-exec "$@"
+echo "[entrypoint] starting application..."
+
+if [ "$#" -eq 0 ]; then
+    exec gunicorn \
+        --bind "0.0.0.0:${PORT:-5000}" \
+        --workers 1 \
+        --timeout 120 \
+        wsgi:app
+else
+    exec "$@"
+fi
