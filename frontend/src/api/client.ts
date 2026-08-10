@@ -1,4 +1,3 @@
-```typescript
 import axios from "axios";
 
 const API_BASE_URL =
@@ -43,4 +42,4 @@ apiClient.interceptors.response.use(
     return Promise.reject(error);
   }
 );
-```
+
